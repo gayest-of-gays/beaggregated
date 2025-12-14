@@ -1,8 +1,26 @@
 export default async function handler(req, res) {
+    const { gameId, universeId } = req.query
+    let uniId = null
+
     try {
-        const { universeId } = req.query
-        if (!universeId || isNaN(Number(universeId))) {
-            res.status(400).json({ error: "Missing or invalid universeId" })
+        if (universeId && !isNaN(Number(universeId))) {
+            uniId = Number(universeId)
+        } else if (gameId && !isNaN(Number(gameId))) {
+            try {
+                const r = await fetch(`https://games.roblox.com/v1/games?universeIds=${gameId}`)
+                const data = await r.json()
+                uniId = data.data?.[0]?.universeId
+                if (!uniId) throw new Error("Invalid gameId")
+            } catch (e) {
+                res.status(200).json({
+                    updatedAt: Date.now(),
+                    badges: {},
+                    message: `Failed to convert gameId to universeId: ${e.message}`
+                })
+                return
+            }
+        } else {
+            res.status(400).json({ error: "Missing or invalid universeId/gameId" })
             return
         }
 
@@ -10,29 +28,36 @@ export default async function handler(req, res) {
         const badgeIds = []
 
         while (true) {
-            const r = await fetch(`https://games.roblox.com/v1/games/${uniId}/badges?limit=100&cursor=${cursor}`)
-            if (!r.ok) {
-                let text = ""
-                try {
-                    text = await r.text()
-                } catch { }
-                console.error("Roblox badge list fetch failed:", r.status, text)
+            let data
+            try {
+                const r = await fetch(`https://games.roblox.com/v1/games/${uniId}/badges?limit=100&cursor=${cursor}`)
+                if (!r.ok) {
+                    let text = ""
+                    try { text = await r.text() } catch { }
+                    res.status(200).json({
+                        updatedAt: Date.now(),
+                        universeId: uniId,
+                        badges: {},
+                        message: `Failed to fetch badge list from Roblox API (status: ${r.status}, body: ${text})`
+                    })
+                    return
+                }
+                data = await r.json()
+            } catch (e) {
                 res.status(200).json({
                     updatedAt: Date.now(),
                     universeId: uniId,
                     badges: {},
-                    message: `Failed to fetch badge list from Roblox API (status: ${r.status}, body: ${text})`
+                    message: `Error fetching badge list: ${e.message}`
                 })
                 return
             }
 
-
-            const data = await r.json()
             if (!data.data || !Array.isArray(data.data)) break
             if (data.data.length === 0 && cursor === "") {
                 res.status(200).json({
                     updatedAt: Date.now(),
-                    universeId,
+                    universeId: uniId,
                     badges: {},
                     message: "No badges associated with this universeId"
                 })
@@ -50,20 +75,18 @@ export default async function handler(req, res) {
             const batch = badgeIds.slice(i, i + concurrency)
             await Promise.all(batch.map(async id => {
                 try {
-                    const r = await fetch(`https://games.roblox.com/v1/games/${uniId}/badges?limit=100&cursor=${cursor}`)
-                    if (!r.ok) {
-                        const text = await r.text()
-                        console.error("Roblox badge list fetch failed:", r.status, text)
-                        res.status(200).json({
-                            updatedAt: Date.now(),
-                            universeId: uniId,
-                            badges: {},
-                            message: "Failed to fetch badge list from Roblox API"
-                        })
-                        return
+                    const r = await fetch(`https://badges.roblox.com/v1/badges/${id}`)
+                    if (!r.ok) return
+                    const b = await r.json()
+                    badges[id] = {
+                        BadgeName: b.name ?? "Unknown",
+                        BadgeDescription: b.description ?? "",
+                        ObtainmentDetails: "Earn this badge in game",
+                        IsLimited: b.isEnabled === false,
+                        Difficulty: 0,
+                        VictorCount: b.statistics?.awardedCount ?? 0
                     }
-
-                } catch (e) { }
+                } catch { }
             }))
         }
 
@@ -75,19 +98,16 @@ export default async function handler(req, res) {
         res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=600")
         res.status(200).json({
             updatedAt: Date.now(),
-            universeId,
+            universeId: uniId,
             badges,
             message
         })
-
     } catch (err) {
         res.status(200).json({
             updatedAt: Date.now(),
-            universeId: req.query.universeId ?? null,
+            universeId: null,
             badges: {},
-            message: "Unexpected error occurred"
+            message: `Unexpected error occurred: ${err.message}`
         })
     }
 }
-
-
