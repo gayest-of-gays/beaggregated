@@ -1,17 +1,8 @@
 export default async function handler(req, res) {
     try {
-        const { gameId } = req.query
-        if (!gameId || isNaN(Number(gameId))) {
-            res.status(400).json({ error: "Missing or invalid gameId" })
-            return
-        }
-
-        const rUniverse = await fetch(`https://games.roblox.com/v1/games?universeIds=${gameId}`)
-        if (!rUniverse.ok) throw new Error("Failed to get universeId")
-        const universeData = await rUniverse.json()
-        const universeId = universeData.data?.[0]?.universeId
-        if (!universeId) {
-            res.status(200).json({ updatedAt: Date.now(), gameId, badges: {} })
+        const { universeId } = req.query
+        if (!universeId || isNaN(Number(universeId))) {
+            res.status(400).json({ error: "Missing or invalid universeId" })
             return
         }
 
@@ -19,15 +10,35 @@ export default async function handler(req, res) {
         const badgeIds = []
 
         while (true) {
-            const r = await fetch(`https://games.roblox.com/v1/games/${universeId}/badges?limit=100&cursor=${cursor}`)
-            if (!r.ok) break
+            const r = await fetch(
+                `https://games.roblox.com/v1/games/${universeId}/badges?limit=100&cursor=${cursor}`
+            )
+            if (!r.ok) {
+                res.status(200).json({
+                    updatedAt: Date.now(),
+                    universeId,
+                    badges: {},
+                    message: "Failed to fetch badge list from Roblox API"
+                })
+                return
+            }
+
             const data = await r.json()
             if (!data.data || !Array.isArray(data.data)) break
+            if (data.data.length === 0 && cursor === "") {
+                res.status(200).json({
+                    updatedAt: Date.now(),
+                    universeId,
+                    badges: {},
+                    message: "No badges associated with this universeId"
+                })
+                return
+            }
+
             badgeIds.push(...data.data.map(b => b.id))
             if (!data.nextPageCursor) break
             cursor = data.nextPageCursor
         }
-
 
         const badges = {}
         const concurrency = 5
@@ -46,15 +57,31 @@ export default async function handler(req, res) {
                         Difficulty: 0,
                         VictorCount: b.statistics?.awardedCount ?? 0
                     }
-                } catch { }
+                } catch (e) { }
             }))
         }
 
-        res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=600")
-        res.status(200).json({ updatedAt: Date.now(), gameId, badges })
+        let message = ""
+        if (Object.keys(badges).length === 0) {
+            message = "No badges could be fetched successfully"
+        }
 
-    } catch {
-        res.status(200).json({ updatedAt: Date.now(), gameId, badges: {} })
+        res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=600")
+        res.status(200).json({
+            updatedAt: Date.now(),
+            universeId,
+            badges,
+            message
+        })
+
+    } catch (err) {
+        res.status(200).json({
+            updatedAt: Date.now(),
+            universeId: req.query.universeId ?? null,
+            badges: {},
+            message: "Unexpected error occurred"
+        })
     }
 }
+
 
