@@ -69,7 +69,7 @@ export default async function handler(req, res) {
                 badges[b.id] = {
                     BadgeName: b.name ?? "Unknown",
                     BadgeDescription: b.description ?? "",
-                    BadgeIconId = b.iconImageId ?? "",
+                    BadgeIconId: b.iconImageId ?? "",
                     VictorCount: b.statistics?.awardedCount ?? 0
                 }
             }
