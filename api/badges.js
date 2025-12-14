@@ -10,18 +10,22 @@ export default async function handler(req, res) {
         const badgeIds = []
 
         while (true) {
-            const r = await fetch(
-                `https://games.roblox.com/v1/games/${universeId}/badges?limit=100&cursor=${cursor}`
-            )
+            const r = await fetch(`https://games.roblox.com/v1/games/${uniId}/badges?limit=100&cursor=${cursor}`)
             if (!r.ok) {
+                let text = ""
+                try {
+                    text = await r.text()
+                } catch { }
+                console.error("Roblox badge list fetch failed:", r.status, text)
                 res.status(200).json({
                     updatedAt: Date.now(),
-                    universeId,
+                    universeId: uniId,
                     badges: {},
-                    message: "Failed to fetch badge list from Roblox API"
+                    message: `Failed to fetch badge list from Roblox API (status: ${r.status}, body: ${text})`
                 })
                 return
             }
+
 
             const data = await r.json()
             if (!data.data || !Array.isArray(data.data)) break
