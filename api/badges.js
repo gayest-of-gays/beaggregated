@@ -7,10 +7,11 @@ export default async function handler(req, res) {
             uniId = Number(universeId)
         } else if (gameId && !isNaN(Number(gameId))) {
             try {
-                const r = await fetch(`https://games.roblox.com/v1/games?universeIds=${gameId}`)
+                const r = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`)
+                if (!r.ok) throw new Error(`HTTP ${r.status}`)
                 const data = await r.json()
-                uniId = data.data?.[0]?.universeId
-                if (!uniId) throw new Error("Invalid gameId")
+                uniId = data?.universeId
+                if (!uniId) throw new Error("UniverseId not found for this gameId")
             } catch (e) {
                 res.status(200).json({
                     updatedAt: Date.now(),
@@ -102,6 +103,7 @@ export default async function handler(req, res) {
             badges,
             message
         })
+
     } catch (err) {
         res.status(200).json({
             updatedAt: Date.now(),
