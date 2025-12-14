@@ -6,13 +6,20 @@ export default async function handler(req, res) {
             return
         }
 
+        const rUniverse = await fetch(`https://games.roblox.com/v1/games?universeIds=${gameId}`)
+        if (!rUniverse.ok) throw new Error("Failed to get universeId")
+        const universeData = await rUniverse.json()
+        const universeId = universeData.data?.[0]?.universeId
+        if (!universeId) {
+            res.status(200).json({ updatedAt: Date.now(), gameId, badges: {} })
+            return
+        }
+
         let cursor = ""
         const badgeIds = []
 
         while (true) {
-            const r = await fetch(
-                `https://games.roblox.com/v1/games/${gameId}/badges?limit=100&cursor=${cursor}`
-            )
+            const r = await fetch(`https://games.roblox.com/v1/games/${universeId}/badges?limit=100&cursor=${cursor}`)
             if (!r.ok) break
             const data = await r.json()
             if (!data.data || !Array.isArray(data.data)) break
@@ -20,6 +27,7 @@ export default async function handler(req, res) {
             if (!data.nextPageCursor) break
             cursor = data.nextPageCursor
         }
+
 
         const badges = {}
         const concurrency = 5
