@@ -13,9 +13,9 @@ export default async function handler(req, res) {
             const r = await fetch(
                 `https://games.roblox.com/v1/games/${gameId}/badges?limit=100&cursor=${cursor}`
             )
-            if (!r.ok) throw new Error(`Failed to fetch badge list for gameId ${gameId}`)
+            if (!r.ok) break
             const data = await r.json()
-            if (!data.data) break
+            if (!data.data || !Array.isArray(data.data)) break
             badgeIds.push(...data.data.map(b => b.id))
             if (!data.nextPageCursor) break
             cursor = data.nextPageCursor
@@ -38,16 +38,15 @@ export default async function handler(req, res) {
                         Difficulty: 0,
                         VictorCount: b.statistics?.awardedCount ?? 0
                     }
-                } catch (e) {
-                    console.error("Failed badge", id, e)
-                }
+                } catch { }
             }))
         }
 
         res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=600")
         res.status(200).json({ updatedAt: Date.now(), gameId, badges })
-    } catch (err) {
-        console.error(err)
-        res.status(500).json({ error: err.message })
+
+    } catch {
+        res.status(200).json({ updatedAt: Date.now(), gameId, badges: {} })
     }
 }
+
